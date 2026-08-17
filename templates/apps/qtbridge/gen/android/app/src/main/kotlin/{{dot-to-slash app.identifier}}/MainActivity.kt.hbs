@@ -1,0 +1,9 @@
+package {{escape-kotlin-keyword app.identifier}}
+
+// Native activity entry point for the Android project.
+//
+// The Rust library is loaded as a native activity (see AndroidManifest
+// android.app.lib_name). Building it requires a Qt-for-Android kit selected via
+// the QMAKE env var — see the README. If you adopt Qt for Android's own
+// tooling, this should instead extend `org.qtproject.qt.android.bindings.QtActivity`.
+class MainActivity : android.app.NativeActivity()

@@ -29,11 +29,18 @@ impl Env {
 
         let home = std::env::var_os("HOME").ok_or(Error::NotSet("HOME"))?;
         let path = std::env::var_os("PATH").ok_or(Error::NotSet("PATH"))?;
-        if let Some(term) = std::env::var_os("TERM") {
-            vars.insert("TERM".into(), term);
-        }
-        if let Some(ssh_auth_sock) = std::env::var_os("SSH_AUTH_SOCK") {
-            vars.insert("SSH_AUTH_SOCK".into(), ssh_auth_sock);
+        // Forward a small allowlist of optional vars from the surrounding
+        // environment. `QMAKE` selects the Qt kit used by qt-build-utils; for a
+        // cross-compile (iOS/Android) it MUST point at a Qt kit built for the
+        // target, otherwise the build falls back to the host (desktop) Qt and
+        // links the wrong frameworks (e.g. `AppKit`/`OpenGL` for an iOS build).
+        // Because build commands run with a fully-replaced environment
+        // (`full_env`), an un-forwarded `QMAKE` would be invisible to the build
+        // script even when the user has it set.
+        for var in ["TERM", "SSH_AUTH_SOCK", "QMAKE"] {
+            if let Some(value) = std::env::var_os(var) {
+                vars.insert(var.into(), value);
+            }
         }
 
         vars.insert("HOME".into(), home);

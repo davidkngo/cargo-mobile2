@@ -1,0 +1,19 @@
+# `[target]` is required here: `cargo mobile init` loads and rewrites this file
+# (adding per-target linker settings), and its loader treats a missing `[target]`
+# table as an error. Leaving it empty is fine — init fills it in as needed.
+[target]
+
+[env]
+# Qt for iOS is a static build whose kit is compiled with a high minimum iOS
+# version (the official Qt 6.11 kits target iOS 17.0). Its bundled static libs
+# (pcre2/harfbuzz/...) reference libSystem helpers like `___chkstk_darwin` that
+# are only vended at a modern deployment target, and rustc otherwise defaults
+# `IPHONEOS_DEPLOYMENT_TARGET` to 10.0 — leaving those symbols undefined at link
+# time. Pin it to match the Qt kit (keep in sync with the `min-os-version` in
+# Cargo.toml's `[package.metadata.cargo-apple.ios]`).
+#
+# NOTE: this applies to every `cargo build` for this project. Because Qt Bridge
+# for Rust is desktop-only today, an iOS/device build additionally requires the
+# `QMAKE` env var to point at a Qt kit built for the target (the desktop qmake
+# on your PATH is the wrong architecture). See the README.
+IPHONEOS_DEPLOYMENT_TARGET = "17.0"

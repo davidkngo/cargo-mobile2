@@ -1,0 +1,20 @@
+import QtQuick
+import QtQuick.Controls
+
+// The QML module name is the crate name — keep this in sync with the `name`
+// in Cargo.toml (dashes become underscores).
+import {{snake-case app.name}}
+
+ApplicationWindow {
+    width: 640
+    height: 480
+    visible: true
+    title: qsTr("{{app.name}}")
+
+    Button {
+        anchors.centerIn: parent
+        text: qsTr("Hello World!")
+        // `Backend` is the Rust singleton registered in src/lib.rs.
+        onClicked: Backend.say_hello()
+    }
+}

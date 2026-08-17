@@ -119,6 +119,27 @@ pub fn gen(
         &dest,
         |map| {
             map.insert("file-groups", &source_dirs);
+            // Effective deployment target: a template may raise the floor via
+            // `[package.metadata.cargo-apple.{ios,macos}] min-os-version`
+            // (e.g. a Qt kit built for a newer minimum); otherwise fall back to
+            // the configured/default version.
+            map.insert(
+                "ios-version",
+                metadata
+                    .ios()
+                    .min_os_version()
+                    .unwrap_or_else(|| config.ios_version()),
+            );
+            map.insert(
+                "macos-version",
+                metadata
+                    .macos()
+                    .min_os_version()
+                    .unwrap_or_else(|| config.macos_version()),
+            );
+            // Whether to link+embed the self-contained cdylib instead of
+            // statically linking the staticlib (see project.yml.hbs).
+            map.insert("embed-cdylib", metadata.embed_cdylib());
             map.insert("ios-libraries", metadata.ios().libraries());
             map.insert("ios-frameworks", metadata.ios().frameworks());
             map.insert(

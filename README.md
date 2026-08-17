@@ -54,6 +54,7 @@ After some straightforward prompts, you'll be asked to select a template pack. T
 | bevy-demo | Minimal 2d Bevy application with a controlable sprite and some audio                                                |
 | dioxus    | Hello world Dioxus example                                                                                          |
 | egui      | Full egui + winit + wgpu example based on [agdk-egui example](https://github.com/rust-mobile/rust-android-examples) |
+| qtbridge  | Minimal [Qt Bridge for Rust](https://github.com/qt/qtbridge-rust) QML app with a Rust backend (desktop only)        |
 | wgpu      | `wgpu-rs` triangle example                                                                                          |
 | winit     | `winit` window example                                                                                              |
 | wry       | Minimal wry project                                                                                                 |

@@ -2,8 +2,8 @@ name: {{app.name}}
 options:
   bundleIdPrefix: {{app.identifier}}
   deploymentTarget:
-    iOS: {{apple.ios-version}}
-    macOS: {{apple.macos-version}}
+    iOS: {{ios-version}}
+    macOS: {{macos-version}}
 fileGroups: [{{join file-groups}}]
 configs:
   debug: debug
@@ -76,10 +76,35 @@ targets:
         LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(inherited) $(PROJECT_DIR)/Sources/aarch64-apple-ios/$(CONFIGURATION)
         LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(inherited) "{{prefix-path "target/"}}{{ios-sim-arch}}/$(CONFIGURATION)"
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: true
+        {{#if embed-cdylib}}
+        # The Rust cdylib is embedded in Frameworks/ (see the "Embed Rust
+        # cdylib" script) and its install name is `@rpath/lib...dylib`; add the
+        # bundle's Frameworks dir to the runpath so dyld resolves it.
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks
+        # Qt for iOS must run `UIApplicationMain` before any `QGuiApplication` is
+        # created. Point the executable's entry at `qtbridge_ios_entry` (exported
+        # by the cdylib), which calls Qt's `qt_main_wrapper`; Qt then invokes the
+        # app's own `main` on a worker thread once UIKit is up. Mirrors what Qt's
+        # own mkspec does (`ld_entry_point = _qt_main_wrapper`).
+        LD_ENTRY_POINT: _qtbridge_ios_entry
+        {{/if}}
       groups: [app]
     dependencies:
+      {{#if embed-cdylib}}
+      # Self-contained Rust cdylib (see the `embed-cdylib` cargo-apple metadata).
+      # It is *linked* here by name — the linker resolves it through
+      # LIBRARY_SEARCH_PATHS above, exactly like the staticlib case. It is NOT
+      # embedded via XcodeGen: the dylib is produced per-arch/config at build
+      # time and doesn't exist at project-generation time, so an XcodeGen
+      # `embed: true` copy phase would fail with `lstat ... No such file`. The
+      # "Embed Rust cdylib" postCompileScript below copies it into the bundle's
+      # Frameworks/ dir and code-signs it instead.
+      - framework: lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.dylib
+        embed: false
+      {{else}}
       - framework: lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.a
         embed: false
+      {{/if}}
       {{#if ios-libraries}}{{~#each ios-libraries}}
       - framework: {{this}}
         embed: false{{/each}}{{/if}}
@@ -117,13 +142,64 @@ targets:
       - script: |-
           PATH=${PATH}:${HOME:?}/.cargo/bin
           CARGO_APPLE=`which cargo-apple`
-          ${CARGO_APPLE} xcode-script -v --platform "${PLATFORM_DISPLAY_NAME:?}" --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:?}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?} ${FEATURES}
+          # Xcode does NOT inherit your shell environment. Source a machine-local
+          # env file (gitignored, not regenerated) so build-time vars survive
+          # `cargo apple init`. Put e.g. `export QMAKE=/path/to/ios/qmake` in
+          # `gen/apple/.xcode.env.local` to point the Rust build at a Qt kit for
+          # the target platform (otherwise it falls back to the desktop qmake on
+          # PATH). cargo-mobile forwards QMAKE to the Rust build.
+          if [ -f "${SRCROOT}/.xcode.env.local" ]; then . "${SRCROOT}/.xcode.env.local"; fi
+          if [ -f "${SRCROOT}/.xcode.env" ]; then . "${SRCROOT}/.xcode.env"; fi
+          if [ -n "${QMAKE:-}" ]; then export QMAKE; fi
+          ${CARGO_APPLE} xcode-script -v --platform "${PLATFORM_DISPLAY_NAME:?}" --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:-}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?} ${FEATURES}
         name: Build Rust Code
         basedOnDependencyAnalysis: false
         outputFiles:
-          - $(SRCROOT)/target/aarch64-apple-ios/${CONFIGURATION}/deps/lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.a
-          - $(SRCROOT)/target/x86_64-apple-ios/${CONFIGURATION}/deps/lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.a
-    {{~#if ios-post-compile-scripts}}
+          - $(SRCROOT)/target/aarch64-apple-ios/${CONFIGURATION}/deps/lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.{{#if embed-cdylib}}dylib{{else}}a{{/if}}
+          - $(SRCROOT)/target/x86_64-apple-ios/${CONFIGURATION}/deps/lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.{{#if embed-cdylib}}dylib{{else}}a{{/if}}
+    {{#if embed-cdylib}}
+    postCompileScripts:
+      # Copy the self-contained Rust cdylib into the app bundle's Frameworks/
+      # dir and code-sign it. Done in a script (rather than an XcodeGen
+      # `embed: true` copy phase) because the dylib is built per-arch/config and
+      # only exists after the build — see the dependency comment above. It is
+      # located through LIBRARY_SEARCH_PATHS so device and simulator both work.
+      - script: |-
+          set -e
+          LIB="lib{{#if app.lib-name}}{{app.lib-name}}{{else}}{{snake-case app.name}}{{/if}}.dylib"
+          DEST="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          mkdir -p "${DEST}"
+          FOUND=""
+          for dir in ${LIBRARY_SEARCH_PATHS}; do
+            d="${dir%\"}"; d="${d#\"}"
+            if [ -f "${d}/${LIB}" ]; then FOUND="${d}/${LIB}"; break; fi
+          done
+          if [ -z "${FOUND}" ]; then echo "error: ${LIB} not found in LIBRARY_SEARCH_PATHS" >&2; exit 1; fi
+          cp -f "${FOUND}" "${DEST}/${LIB}"
+          if [ "${CODE_SIGNING_ALLOWED}" = "YES" ] && [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" ${OTHER_CODE_SIGN_FLAGS} "${DEST}/${LIB}"
+          fi
+        name: Embed Rust cdylib
+        basedOnDependencyAnalysis: false
+      {{~#if ios-post-compile-scripts}}{{~#each ios-post-compile-scripts}}{{#if this.path}}
+      - path {{this.path}}{{/if}}{{#if this.script}}
+      - script: {{this.script}}{{/if}}{{#if this.name}}
+        name: {{this.name}}{{/if}}{{#if this.input-files}}
+        inputFiles: {{~#each this.input-files}}
+          - {{this}}{{/each}}{{/if}}{{#if this.output-files}}
+        outputFiles: {{~#each this.output-files}}
+          - {{this}}{{/each}}{{/if}}{{#if this.input-file-lists}}
+        inputFileLists: {{~#each this.output-files}}
+          - {{this}}{{/each}}{{/if}}{{#if this.output-file-lists}}
+        outputFileLists: {{~#each this.output-files}}
+          - {{this}}{{/each}}{{/if}}{{#if this.shell}}
+        shell: {{this.shell}}{{/if}}{{#if this.show-env-vars}}
+        showEnvVars: {{this.show_env_vars}}{{/if}}{{#if this.run-only-when-installing}}
+        runOnlyWhenInstalling: {{this.run-only-when-installing}}{{/if}}{{#if this.based-on-dependency-analysis}}
+        basedOnDependencyAnalysis: {{this.based-on-dependency-analysis}}{{/if}}{{#if this.discovered-dependency-file}}
+        discoveredDependencyFile: {{this.discovered-dependency-file}}{{/if}}
+      {{~/each~}}{{~/if~}}
+    {{~else}}{{~#if ios-post-compile-scripts}}
     postCompileScripts:
       {{~#each ios-post-compile-scripts}}{{#if this.path}}
       - path {{this.path}}{{/if}}{{#if this.script}}
@@ -143,7 +219,7 @@ targets:
         basedOnDependencyAnalysis: {{this.based-on-dependency-analysis}}{{/if}}{{#if this.discovered-dependency-file}}
         discoveredDependencyFile: {{this.discovered-dependency-file}}{{/if}}
       {{~/each~}}
-    {{~/if~}}
+    {{~/if~}}{{~/if~}}
     {{~#if ios-post-build-scripts}}
     postBuildScripts:
       {{~#each ios-post-build-scripts}}{{#if this.path}}

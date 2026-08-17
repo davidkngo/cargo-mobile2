@@ -518,8 +518,19 @@ impl Exec for Input {
                         )
                         .map_err(Error::CompileLibFailed)?;
 
+                    // With `embed-cdylib`, copy the self-contained `cdylib`
+                    // instead of the `staticlib`: the app links against and
+                    // embeds one dynamic library that already has every native
+                    // dependency linked in (e.g. a Qt kit's frameworks + bundled
+                    // static libs + resource-init objects), rather than forcing
+                    // Xcode to re-link all of them against a static archive.
+                    let lib_extension = if metadata.embed_cdylib() {
+                        "dylib"
+                    } else {
+                        "a"
+                    };
                     let lib_location = format!(
-                        "{rust_triple}/{}/lib{}.a",
+                        "{rust_triple}/{}/lib{}.{lib_extension}",
                         profile.as_str(),
                         config.app().lib_name()
                     );
@@ -529,7 +540,6 @@ impl Exec for Input {
                         return Err(Error::LibNotFound { path: lib_path });
                     }
 
-                    // Copy static lib .a to Xcode Project
                     if rust_triple.starts_with("aarch64-apple-ios") {
                         std::fs::create_dir_all(format!(
                             "Sources/{rust_triple}/{}",

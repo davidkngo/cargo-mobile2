@@ -71,6 +71,12 @@ pub struct Platform {
     pub post_compile_scripts: Option<Vec<BuildScript>>,
     pub post_build_scripts: Option<Vec<BuildScript>>,
     pub command_line_arguments: Option<Vec<String>>,
+    /// Minimum OS deployment version for this platform, e.g. `"17.0"`. Lets a
+    /// template raise the floor above the global default (`DEFAULT_IOS_VERSION`
+    /// / `DEFAULT_MACOS_VERSION`) — e.g. a Qt template whose kit is built for a
+    /// newer minimum. When unset, the value from `mobile.toml`/the default is
+    /// used.
+    pub min_os_version: Option<String>,
 }
 
 impl Platform {
@@ -137,6 +143,10 @@ impl Platform {
     pub fn command_line_arguments(&self) -> &[String] {
         self.command_line_arguments.as_deref().unwrap_or_default()
     }
+
+    pub fn min_os_version(&self) -> Option<&str> {
+        self.min_os_version.as_deref()
+    }
 }
 
 const fn default_true() -> bool {
@@ -147,6 +157,13 @@ const fn default_true() -> bool {
 pub struct Metadata {
     #[serde(default = "default_true")]
     pub supported: bool,
+    /// Link + embed the crate's `cdylib` into the app bundle instead of
+    /// statically linking its `staticlib`. Use this when the Rust library pulls
+    /// in heavy native dependencies that would otherwise have to be re-linked by
+    /// Xcode (e.g. a Qt kit): the cdylib is self-contained, so Xcode only embeds
+    /// one dynamic library. Defaults to the static-lib flow.
+    #[serde(default, rename = "embed-cdylib")]
+    pub embed_cdylib: bool,
     #[serde(default)]
     pub ios: Platform,
     #[serde(default)]
@@ -157,6 +174,7 @@ impl Default for Metadata {
     fn default() -> Self {
         Self {
             supported: true,
+            embed_cdylib: false,
             ios: Default::default(),
             macos: Default::default(),
         }
@@ -166,6 +184,10 @@ impl Default for Metadata {
 impl Metadata {
     pub const fn supported(&self) -> bool {
         self.supported
+    }
+
+    pub const fn embed_cdylib(&self) -> bool {
+        self.embed_cdylib
     }
 
     pub fn ios(&self) -> &Platform {
@@ -353,6 +375,14 @@ impl Config {
 
     pub fn project_dir(&self) -> PathBuf {
         self.app.prefix_path(&self.project_dir)
+    }
+
+    pub fn ios_version(&self) -> &str {
+        &self.ios_version
+    }
+
+    pub fn macos_version(&self) -> &str {
+        &self.macos_version
     }
 
     pub fn project_dir_exists(&self) -> bool {

@@ -1,0 +1,59 @@
+[package]
+name = "{{app.name}}"
+version = "0.1.0"
+authors = ["{{author}}"]
+edition = "2024"
+build = "build.rs"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "{{app.name}}-desktop"
+path = "gen/bin/desktop.rs"
+
+# The metadata below makes `cargo mobile init` scaffold the iOS and Android
+# projects. The Rust chain cross-compiles for mobile, but `cargo apple build` /
+# `cargo android build` need a Qt kit built for the target platform — point the
+# `QMAKE` env var at that kit's qmake (the desktop qmake on your PATH is the
+# wrong architecture for a device build). See the README.
+[package.metadata.cargo-android]
+app-activity-name = "{{app.identifier}}.MainActivity"
+app-dependencies = [
+    "androidx.appcompat:appcompat:1.6.1",
+    "com.google.android.material:material:1.8.0",
+]
+project-dependencies = [ "org.jetbrains.kotlin:kotlin-gradle-plugin:1.6.21" ]
+app-plugins = [ "org.jetbrains.kotlin.android" ]
+app-theme-parent = "Theme.MaterialComponents.DayNight.DarkActionBar"
+vulkan-validation = false
+
+[package.metadata.cargo-apple]
+# Link + embed the self-contained Rust cdylib into the app bundle instead of
+# statically linking the staticlib. Qt for iOS is a large static build (Qt
+# frameworks + bundled libs + compiled-in QML/scenegraph resources); the cdylib
+# has them all linked in, so the Xcode app only needs to embed one dylib rather
+# than re-link the entire Qt kit.
+embed-cdylib = true
+
+[package.metadata.cargo-apple.ios]
+frameworks = []
+# Qt for iOS is distributed as a static build with a high minimum iOS version
+# (the official Qt 6.11 kits are built for iOS 17.0). The app's deployment
+# target must be at least this, or its bundled libs reference libSystem helpers
+# (e.g. `___chkstk_darwin`) that aren't vended at older targets. Keep this in
+# sync with `.cargo/config.toml`'s `IPHONEOS_DEPLOYMENT_TARGET`, and adjust both
+# if your Qt kit targets a different minimum.
+min-os-version = "17.0"
+
+[dependencies]
+# Qt Bridge for Rust — build Qt Quick UIs with a Rust backend, no C++ required.
+# Not published on crates.io yet, so we depend on the official Qt repository.
+qtbridge = { git = "https://github.com/qt/qtbridge-rust" }
+
+[build-dependencies]
+# Used by build.rs (iOS only) to compile the C++ shim that statically imports
+# Qt's platform + QML module plugins (`Q_IMPORT_PLUGIN`), and to parse the
+# `qmlimportscanner` output that decides which QML plugins to import.
+cc = "1"
+serde_json = "1"
