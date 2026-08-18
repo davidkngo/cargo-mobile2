@@ -18,9 +18,9 @@ exposed to QML using simple attribute macros (`#[qobject]`, `#[qslot]`,
   - `Router.qml` — a singleton router with dynamic segments (`deck/[id]`),
     catch-all (`[...path]`) and query strings; registered in `qmldir`.
   - `routes.js` — the route tree, declared outside the router.
-  - `pages/` — one QML `Page` per screen. `Home.qml`'s `import <crate-name>`
-    line must match the crate name (the `name` in `Cargo.toml`, with dashes
-    turned into underscores).
+  - `pages/` — one QML `Page` per screen; `Index.qml` is the starter page.
+    Its `import <crate-name>` line must match the crate name (the `name` in
+    `Cargo.toml`, with dashes turned into underscores).
 - `gen/bin/desktop.rs` — the desktop entry point that calls `main()`.
 - `gen/android/` — the Android project scaffolding (see the caveat below).
 
