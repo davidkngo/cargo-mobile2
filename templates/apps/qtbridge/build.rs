@@ -15,16 +15,114 @@ fn qmake_query(qmake: &str, key: &str) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
+fn find_qmake() -> String {
+    if let Ok(q) = std::env::var("QMAKE") {
+        return q;
+    }
+    for cand in ["qmake", "qmake6"] {
+        let ok = Command::new(cand)
+            .arg("-version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok {
+            return cand.to_owned();
+        }
+    }
+    "qmake".to_owned()
+}
+
+fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", dir.display()));
+    for entry in entries {
+        let path = entry.expect("failed to read dir entry").path();
+        if path.is_dir() {
+            collect_files(&path, out);
+        } else {
+            out.push(path);
+        }
+    }
+}
+
+// Compile src/qml into a Qt resource embedded in the binary, reachable at
+// `qrc:/qml/...`. Runs for every target so the same load path works on
+// desktop, iOS and Android without shipping loose files.
+fn build_qml_resources(qmake: &str) {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let qml_root = PathBuf::from(&manifest_dir).join("src/qml");
+    if !qml_root.is_dir() {
+        println!(
+            "cargo::warning=no {}; skipping QML resource embedding",
+            qml_root.display()
+        );
+        return;
+    }
+
+    let host_libexecs = qmake_query(qmake, "QT_HOST_LIBEXECS");
+    let host_bins = qmake_query(qmake, "QT_HOST_BINS");
+    let rcc = [
+        Path::new(&host_libexecs).join("rcc"),
+        Path::new(&host_bins).join("rcc"),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
+    .unwrap_or_else(|| panic!("rcc not found in {host_libexecs} or {host_bins}"));
+
+    let mut files = Vec::new();
+    collect_files(&qml_root, &mut files);
+    files.sort();
+
+    let mut qrc = String::from("<!DOCTYPE RCC><RCC version=\"1.0\">\n<qresource prefix=\"/qml\">\n");
+    for f in &files {
+        let alias = f
+            .strip_prefix(&qml_root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        qrc.push_str(&format!("  <file alias=\"{alias}\">{}</file>\n", f.display()));
+        println!("cargo::rerun-if-changed={}", f.display());
+    }
+    qrc.push_str("</qresource>\n</RCC>\n");
+
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let qrc_path = Path::new(&out_dir).join("qml.qrc");
+    std::fs::write(&qrc_path, qrc).expect("failed to write qml.qrc");
+
+    let cpp_path = Path::new(&out_dir).join("qrc_qml.cpp");
+    let status = Command::new(&rcc)
+        .args(["--name", "qml", "-o"])
+        .arg(&cpp_path)
+        .arg(&qrc_path)
+        .status()
+        .expect("failed to run rcc");
+    assert!(status.success(), "rcc failed");
+
+    let obj_path = Path::new(&out_dir).join("qrc_qml.o");
+    let compiler = cc::Build::new().cpp(true).std("c++17").get_compiler();
+    let mut cmd = compiler.to_command();
+    cmd.arg("-c").arg(&cpp_path).arg("-o").arg(&obj_path);
+    let status = cmd.status().expect("failed to compile qrc object");
+    assert!(status.success(), "compiling qrc object failed");
+    println!("cargo::rustc-link-arg={}", obj_path.display());
+
+    println!("cargo::rerun-if-changed={}", qml_root.display());
+}
+
 fn main() {
+    let qmake = find_qmake();
+    build_qml_resources(&qmake);
+
+    println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-env-changed=QMAKE");
+
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("ios") {
-        println!("cargo::rerun-if-changed=build.rs");
         return;
     }
 
     let lib = std::env::var("CARGO_PKG_NAME").unwrap().replace('-', "_");
     println!("cargo::rustc-cdylib-link-arg=-Wl,-install_name,@rpath/lib{lib}.dylib");
 
-    let qmake = std::env::var("QMAKE").unwrap_or_else(|_| "qmake".to_owned());
     let plugins_dir = qmake_query(&qmake, "QT_INSTALL_PLUGINS");
     let libs_dir = qmake_query(&qmake, "QT_INSTALL_LIBS");
     let headers_dir = qmake_query(&qmake, "QT_INSTALL_HEADERS");
@@ -161,7 +259,4 @@ fn main() {
     }
 
     println!("cargo::rustc-link-arg=-lc++");
-
-    println!("cargo::rerun-if-changed=build.rs");
-    println!("cargo::rerun-if-env-changed=QMAKE");
 }

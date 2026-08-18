@@ -10,9 +10,17 @@ exposed to QML using simple attribute macros (`#[qobject]`, `#[qslot]`,
 - `src/lib.rs` — the Rust backend. `Backend` is registered as a QML singleton;
   `main()` boots the Qt application and loads the QML on desktop, and
   `start_app()` is the mobile entry point (see the caveat below).
-- `src/qml/Main.qml` — the QML entry point, compiled into the binary via
-  `include_bytes!`. Its `import <crate-name>` line must match the crate name
-  (the `name` in `Cargo.toml`, with dashes turned into underscores).
+- `src/qml/` — the QML UI. The whole directory is compiled into the binary as a
+  Qt resource by `build.rs` and loaded from `qrc:/qml/Main.qml`, so it works the
+  same on desktop and on device.
+  - `Main.qml` — the entry point; hosts a `StackView` and hands the route tree
+    to the `Router`.
+  - `Router.qml` — a singleton router with dynamic segments (`deck/[id]`),
+    catch-all (`[...path]`) and query strings; registered in `qmldir`.
+  - `routes.js` — the route tree, declared outside the router.
+  - `pages/` — one QML `Page` per screen. `Home.qml`'s `import <crate-name>`
+    line must match the crate name (the `name` in `Cargo.toml`, with dashes
+    turned into underscores).
 - `gen/bin/desktop.rs` — the desktop entry point that calls `main()`.
 - `gen/android/` — the Android project scaffolding (see the caveat below).
 

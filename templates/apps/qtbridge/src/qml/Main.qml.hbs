@@ -1,9 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 
-// The QML module name is the crate name — keep this in sync with the `name`
-// in Cargo.toml (dashes become underscores).
-import {{snake-case app.name}}
+import "."
+import "routes.js" as Routes
 
 ApplicationWindow {
     width: 640
@@ -11,10 +10,10 @@ ApplicationWindow {
     visible: true
     title: qsTr("{{app.name}}")
 
-    Button {
-        anchors.centerIn: parent
-        text: qsTr("Hello World!")
-        // `Backend` is the Rust singleton registered in src/lib.rs.
-        onClicked: Backend.say_hello()
+    StackView {
+        id: stackView
+        anchors.fill: parent
+
+        Component.onCompleted: Router.initialize(stackView, Routes.tree, Routes.initialRoute)
     }
 }

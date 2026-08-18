@@ -16,7 +16,8 @@ fn run() {
     eprintln!("[boot] entering event loop");
     let code = QApp::new()
         .register::<Backend>()
-        .load_qml(include_bytes!("qml/Main.qml"))
+        .add_import_path("qrc:/qml")
+        .load_qml_from_file("qrc:/qml/Main.qml")
         .run();
     eprintln!("[boot] event loop exited with code {code}");
 }
