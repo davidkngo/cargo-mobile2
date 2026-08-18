@@ -1,8 +1,5 @@
 use qtbridge::{qobject, QApp};
 
-/// A Rust type exposed to QML. With `#[qobject(Singleton)]` it is reachable
-/// from QML as a singleton named `Backend`, and every `#[qslot]` becomes a
-/// method QML can call.
 #[derive(Default)]
 pub struct Backend {}
 
@@ -14,62 +11,27 @@ impl Backend {
     }
 }
 
-/// Boot the Qt application, register the Rust types, load the QML entry point,
-/// and run the event loop.
-///
-/// The QML document is compiled into the binary with `include_bytes!`, so the
-/// path is relative to this source file (`src/qml/Main.qml`).
+
 fn run() {
-    // Temporary boot logging to diagnose startup. The QML is embedded at
-    // compile time, so a non-zero length here confirms it made it into the
-    // binary — a truly missing file would fail the build, not run.
-    const QML: &[u8] = include_bytes!("qml/Main.qml");
-    eprintln!("[boot] embedded QML = {} bytes", QML.len());
-
-    eprintln!("[boot] creating QApp");
-    let mut app = QApp::new();
-
-    eprintln!("[boot] registering Backend");
-    app.register::<Backend>();
-
-    eprintln!("[boot] loading QML");
-    app.load_qml(QML);
-
-    // If the QML failed to parse/load, Qt prints the errors to stderr above
-    // this line (as `qml: ...` / `file:...:line: ...` warnings) and the engine
-    // has no root window — the event loop then exits immediately with 0.
     eprintln!("[boot] entering event loop");
-    let code = app.run();
+    let code = QApp::new()
+        .load_qml(include_bytes!("qml/Main.qml"))
+        .register::<Backend>()
+        .run();
     eprintln!("[boot] event loop exited with code {code}");
 }
 
-/// Desktop entry point, invoked from `gen/bin/desktop.rs`.
 pub fn main() {
     run();
 }
 
-/// Mobile entry point, called by the generated Xcode (`main.mm`) and Android
-/// projects.
-///
-/// The Rust chain cross-compiles for iOS/Android; the mobile build additionally
-/// needs a Qt kit built for the target platform, selected via the `QMAKE` env
-/// var (the desktop qmake on your PATH is the wrong architecture). See README.
+
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn start_app() {
     run();
 }
 
-/// iOS process entry point — the app target sets this as its `LD_ENTRY_POINT`
-/// (see the generated Xcode project).
-///
-/// Qt for iOS requires `UIApplicationMain` to run *before* any `QGuiApplication`
-/// is created, otherwise it aborts with "creating QApplication before calling
-/// UIApplicationMain". `qt_main_wrapper` (from the static `qios` platform
-/// plugin linked into this cdylib) starts `UIApplicationMain`, then calls the
-/// app executable's `main` — which runs `start_app` — on a worker thread once
-/// UIKit is up. Exposing it as a `#[no_mangle]` Rust symbol is what makes the
-/// cdylib export it so the executable's entry point can resolve to it.
 #[cfg(target_os = "ios")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qtbridge_ios_entry(
