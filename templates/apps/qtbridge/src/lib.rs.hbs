@@ -33,6 +33,11 @@ fn run() {
         .load_qml_from_file("qrc:/qml/Main.qml")
         .run();
     eprintln!("[boot] event loop exited with code {code}");
+
+    // Exit before the QApp drops: on mobile, running ~QGuiApplication during OS
+    // teardown crashes (EXC_BAD_ACCESS), and it guarantees a clean cold relaunch.
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    std::process::exit(code);
 }
 
 pub fn main() {

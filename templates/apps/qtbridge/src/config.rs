@@ -1,22 +1,8 @@
-//! Runtime configuration via [`figment`].
-//!
-//! The **effective** `Application.toml` — the developer's local (gitignored)
-//! file if present, else the committed `Application.example.toml` — is staged
-//! into `OUT_DIR` by `build.rs` and embedded here with `include_str!`. That way
-//! config works with zero runtime dependence: a real device has neither the dev
-//! machine's file paths nor a shell environment, so embedding is the only thing
-//! that reaches it. Secrets stay out of git (the local file is gitignored) yet
-//! still ship in the binary.
-//!
-//! `APP_<SECTION>__<KEY>` **sectional** env vars override the embedded values at
-//! runtime (double underscore between section and key):
-//!
-//! ```text
-//! APP_DEV__HOST -> dev.host
-//! APP_DEV__PORT -> dev.port
-//! ```
-//!
-//! Add your own `#[derive(Deserialize)]` sections to [`Application`].
+//! Runtime config. `build.rs` stages the effective `Application.toml` (local
+//! gitignored file if present, else the committed example) into `OUT_DIR`; it's
+//! embedded here so it works on-device with no filesystem/env dependence.
+//! `APP_<SECTION>__<KEY>` env vars override it (double underscore separates
+//! section and key). Add your own sections to [`Application`].
 
 use figment::{
     providers::{Env, Format, Toml},
@@ -24,7 +10,6 @@ use figment::{
 };
 use serde::Deserialize;
 
-// The effective config, staged by build.rs and compiled in.
 const EMBEDDED: &str = include_str!(concat!(env!("OUT_DIR"), "/application.toml"));
 
 #[derive(Debug, Default, Deserialize)]

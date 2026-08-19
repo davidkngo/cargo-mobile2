@@ -109,11 +109,9 @@ fn build_qml_resources(qmake: &str) {
     println!("cargo::rerun-if-changed={}", qml_root.display());
 }
 
-// Stage the EFFECTIVE app config into OUT_DIR so `config.rs` can embed it with
-// `include_str!`. This makes config work with zero runtime dependence — crucial
-// on a real device, which has neither the dev machine's file paths nor a shell
-// environment. Source precedence: the developer's local (gitignored)
-// `Application.toml` if present, else the committed `Application.example.toml`.
+// Stage the effective config (local gitignored Application.toml if present, else
+// the committed example) into OUT_DIR for `config.rs` to embed — so it works
+// on-device without shipping a file or relying on the CWD.
 fn stage_config() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let out = std::env::var("OUT_DIR").unwrap();
