@@ -31,7 +31,11 @@ frameworks = []
 min-os-version = "17.0"
 
 [dependencies]
-qtbridge = { git = "https://github.com/davidkngo/qtbridge-rust", tag = "0.0.1-dev" }
+qtbridge = { git = "https://github.com/davidkngo/qtbridge-rust", tag = "0.0.3-dev" }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+# Runtime config loading: an embedded Application.toml baseline overridden by env.
+figment = { version = "0.10", features = ["toml", "env"] }
 
 [build-dependencies]
 cc = "1"

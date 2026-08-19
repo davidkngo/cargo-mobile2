@@ -1,0 +1,15 @@
+# Application configuration, loaded at runtime by figment (src/config.rs).
+#
+# Sections here are overridable by sectional env vars named APP_<SECTION>__<KEY>
+# (double underscore between section and key), which win over these values:
+#   APP_DEV__HOST  overrides [dev] host
+#   APP_DEV__PORT  overrides [dev] port
+#
+# Add your own sections and mirror them in src/config.rs.
+
+# Hot-reload dev server this app dials OUT to (your dev machine). On a device or
+# simulator build, set APP_DEV__HOST to your Mac's LAN IP (e.g. in the Xcode
+# scheme) so the app can reach it.
+[dev]
+host = "127.0.0.1"
+port = 8790

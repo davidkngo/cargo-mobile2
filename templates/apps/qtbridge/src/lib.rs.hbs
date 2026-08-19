@@ -1,5 +1,8 @@
 use qtbridge::{qobject, QApp};
 
+mod config;
+mod db;
+
 #[derive(Default)]
 pub struct Backend {}
 
@@ -14,6 +17,16 @@ impl Backend {
 
 fn run() {
     eprintln!("[boot] entering event loop");
+
+    // Load runtime config (embedded Application.toml + APP_*__* env overrides).
+    let cfg = config::load();
+    eprintln!("[config] dev server: {}:{}", cfg.dev.host, cfg.dev.port);
+
+    // Open the database once on boot so schema migrations run before the UI does.
+    if let Err(e) = db::open() {
+        eprintln!("[db] init failed: {e}");
+    }
+
     let code = QApp::new()
         .register::<Backend>()
         .add_import_path("qrc:/qml")

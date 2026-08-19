@@ -1,0 +1,33 @@
+//! Database access: connection and schema composition.
+//!
+//! `open()` opens the on-disk SQLite database and brings its schema up to date
+//! via [`migrations::run`]. Add your tables by appending a step in
+//! `migrations.rs` and bumping `SCHEMA_VERSION`.
+
+use rusqlite::Connection;
+use std::path::PathBuf;
+
+pub mod migrations;
+
+/// App-writable, persistent DB location on every platform:
+///   iOS  -> <sandbox>/Documents/…    macOS/Linux -> ~/Documents/…
+pub fn path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_owned());
+    let dir = PathBuf::from(home).join("Documents");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("{{app.name}}.sqlite")
+}
+
+/// Open a connection with all pending migrations applied.
+pub fn open() -> rusqlite::Result<Connection> {
+    let conn = Connection::open(path())?;
+    migrations::run(&conn)?;
+    Ok(conn)
+}
+
+/// Run a closure against a freshly opened connection.
+#[allow(dead_code)]
+pub fn with_conn<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    let conn = open()?;
+    f(&conn)
+}
