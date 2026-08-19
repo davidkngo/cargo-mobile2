@@ -1,10 +1,15 @@
 //! Runtime configuration via [`figment`].
 //!
-//! `Application.toml` is embedded into the binary as a baseline (so device/
-//! release builds have values without a shell environment), then overridden by
-//! **sectional** environment variables: `APP_<SECTION>__<KEY>`. The section and
-//! key are separated by a double underscore so keys that themselves contain an
-//! underscore map correctly:
+//! The **effective** `Application.toml` — the developer's local (gitignored)
+//! file if present, else the committed `Application.example.toml` — is staged
+//! into `OUT_DIR` by `build.rs` and embedded here with `include_str!`. That way
+//! config works with zero runtime dependence: a real device has neither the dev
+//! machine's file paths nor a shell environment, so embedding is the only thing
+//! that reaches it. Secrets stay out of git (the local file is gitignored) yet
+//! still ship in the binary.
+//!
+//! `APP_<SECTION>__<KEY>` **sectional** env vars override the embedded values at
+//! runtime (double underscore between section and key):
 //!
 //! ```text
 //! APP_DEV__HOST -> dev.host
@@ -19,8 +24,8 @@ use figment::{
 };
 use serde::Deserialize;
 
-// The committed baseline, compiled in. Env vars layered on top win.
-const BASELINE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Application.toml"));
+// The effective config, staged by build.rs and compiled in.
+const EMBEDDED: &str = include_str!(concat!(env!("OUT_DIR"), "/application.toml"));
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Application {
@@ -50,12 +55,16 @@ fn default_port() -> u16 {
     8790
 }
 
-/// Load the whole application config: embedded `Application.toml`, then
-/// `APP_*__*` sectional environment overrides.
+/// Load config: embedded effective `Application.toml`, then `APP_*__*` env.
 pub fn load() -> Application {
-    Figment::new()
-        .merge(Toml::string(BASELINE))
-        .merge(Env::prefixed("APP_").split("__"))
-        .extract()
-        .unwrap_or_default()
+    let fig = Figment::new()
+        .merge(Toml::string(EMBEDDED))
+        .merge(Env::prefixed("APP_").split("__"));
+    match fig.extract::<Application>() {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("[config] failed to load, using defaults: {e}");
+            Application::default()
+        }
+    }
 }

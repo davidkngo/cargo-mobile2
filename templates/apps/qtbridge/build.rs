@@ -109,9 +109,28 @@ fn build_qml_resources(qmake: &str) {
     println!("cargo::rerun-if-changed={}", qml_root.display());
 }
 
+// Stage the EFFECTIVE app config into OUT_DIR so `config.rs` can embed it with
+// `include_str!`. This makes config work with zero runtime dependence — crucial
+// on a real device, which has neither the dev machine's file paths nor a shell
+// environment. Source precedence: the developer's local (gitignored)
+// `Application.toml` if present, else the committed `Application.example.toml`.
+fn stage_config() {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let out = std::env::var("OUT_DIR").unwrap();
+    let local = Path::new(&manifest).join("Application.toml");
+    let example = Path::new(&manifest).join("Application.example.toml");
+    let src = if local.exists() { &local } else { &example };
+    let dest = Path::new(&out).join("application.toml");
+    std::fs::copy(src, &dest)
+        .unwrap_or_else(|e| panic!("failed to stage {} -> {}: {e}", src.display(), dest.display()));
+    println!("cargo::rerun-if-changed={}", local.display());
+    println!("cargo::rerun-if-changed={}", example.display());
+}
+
 fn main() {
     let qmake = find_qmake();
     build_qml_resources(&qmake);
+    stage_config();
 
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-env-changed=QMAKE");
