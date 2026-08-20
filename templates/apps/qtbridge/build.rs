@@ -140,6 +140,29 @@ fn main() {
     let lib = std::env::var("CARGO_PKG_NAME").unwrap().replace('-', "_");
     println!("cargo::rustc-cdylib-link-arg=-Wl,-install_name,@rpath/lib{lib}.dylib");
 
+    // Optional native ObjC++ shims: any .mm under native/ios/ is compiled into this
+    // cdylib (so Rust<->ObjC++ FFI resolves within one binary) and links
+    // AuthenticationServices for the in-app OAuth browser. Absent in the bare
+    // template — the block is a no-op unless an app drops shims in.
+    let native_ios = PathBuf::from(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("native/ios");
+    println!("cargo::rerun-if-changed={}", native_ios.display());
+    if native_ios.is_dir() {
+        let mut mm_files = Vec::new();
+        collect_files(&native_ios, &mut mm_files);
+        mm_files.retain(|p| p.extension().is_some_and(|e| e == "mm"));
+        mm_files.sort();
+        if !mm_files.is_empty() {
+            let mut build = cc::Build::new();
+            for f in &mm_files {
+                build.file(f);
+                println!("cargo::rerun-if-changed={}", f.display());
+            }
+            build.flag("-fobjc-arc").compile("memo_native_ios");
+            println!("cargo::rustc-link-arg=-framework");
+            println!("cargo::rustc-link-arg=AuthenticationServices");
+        }
+    }
+
     let plugins_dir = qmake_query(&qmake, "QT_INSTALL_PLUGINS");
     let libs_dir = qmake_query(&qmake, "QT_INSTALL_LIBS");
     let headers_dir = qmake_query(&qmake, "QT_INSTALL_HEADERS");
